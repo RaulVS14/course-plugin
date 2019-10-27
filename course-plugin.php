@@ -57,11 +57,66 @@ add_action('admin_menu', 'cp_admin_menus');
 
 // 1.2
 // hint: plugin activation
-register_activation_hook(__FILE__,'cp_activate_plugin');
+register_activation_hook(__FILE__, 'cp_activate_plugin');
 
 
 /* !2. SHORTCODES */
 
+// 2.1
+// hint: registers custom shortcodes for this plugin
+function cp_register_shortcodes()
+{
+    // hint: [cp_survey id="123"]
+    add_shortcode('cp_survey', 'cp_survey_shortcode');
+}
+
+// 2.2
+// hint: display a survey
+function cp_survey_shortcode($args, $content = "")
+{
+    $output = "";
+    try {
+        // begin building our output html
+        $output = '<div class="cp cp-survey">';
+
+        // get the survey id
+        $survey_id = (isset($args['id'])) ? (int)$args['id'] : 0;
+
+        // get the survey object
+        $survey = get_post($survey_id);
+
+        // IF the survey is not valid cp_survey post, return a message
+        if (!$survey_id || $survey->post_type !== 'cp_survey'):
+            $output .= '<p>The requested survey does not exist.</p>';
+        else:
+
+            // build form html
+            $form = '';
+            if (strlen($content)):
+                $form = '<div class="cp-survey-content">'
+                    . wpautop($content)
+                    . '</div>';
+            endif;
+            $submit_button = '';
+            if (!cp_question_is_answered($survey_id)):
+                $submit_button = '<div class="cp-survey-footer">
+                                    <p class="cp-input-container cp-submit">
+                                        <input type="submit" name="cp_submit" value="Submit Your Response"/>                                    
+                                    </p>
+                                  </div>';
+            endif;
+            $form .= '<form id="survey_' . $survey_id . '" class="cp-survey-form">'
+                . cp_get_question_html($survey_id) . $submit_button
+                . '</form>';
+            $output .= $form;
+        endif;
+        $output .= '</div>';
+
+    } catch (Exception $e) {
+        // php error
+    }
+    return $output;
+}
 
 /* !3. FILTERS */
 
@@ -148,7 +203,7 @@ function cp_create_plugin_tables()
                 UNIQUE INDEX ix (ip_address,survey_id)) $charset_collate;";
 
         // make sure we include wordpress functions for dbDelta
-        require_once(ABSPATH.'wp-admin/includes/upgrade.php');
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
         // dbDelta will create a new table if none exists or update an existing one
         dbDelta($sql);
@@ -172,6 +227,33 @@ function cp_activate_plugin()
 
 /* !6. HELPERS */
 
+// 6.1
+// hint: returns html for survey question
+function cp_get_question_html($survey_id)
+{
+    $html = '';
+
+    // get the survey post object
+    $survey = get_post($survey_id);
+
+    // IF $survey is a valid cp_survey post type ...
+    if ($survey->post_type == 'cp_survey'):
+        $question_text = $survey->post_content;
+        $question_opts = array(
+            'Strongly Agree'    => 5,
+            'Somewhat Agree'    => 4,
+            'Neutral'           => 3,
+            'Somewhat Disagree' => 2,
+            'Strongly Disagree' => 1
+        );
+
+        // check if the current user has already answered this survey question
+        $answered = cp_question_is_answered($survey_id);
+
+        // default complete class is blank
+        $complete_class = '';
+    endif;
+}
 
 /* !7. CUSTOM POST TYPES */
 // 7.1

@@ -35,6 +35,12 @@
 2. Create a method for plugin activation
 3. [Register activation hook](https://developer.wordpress.org/reference/functions/register_activation_hook/) for plugin activation method
 
+## Shortcodes
+[Shortcodes support page](https://en.support.wordpress.com/shortcodes/)
+
+1. Create custom shortcode by registering shortcode function with [add_shortcode](https://codex.wordpress.org
+ /add_shortcode)
+
 ## ISSUES
 1. Forgot password -> create md5 password and copy it to replace it in database
 2. Can't update -> check rights if the files are for correct user
