@@ -41,6 +41,29 @@
 1. Create custom shortcode by registering shortcode function with [add_shortcode](https://codex.wordpress.org
  /add_shortcode)
 
+2. Create function that will replace the shortcode
+
+3. Register hooks for shortcode using [init](https://developer.wordpress.org/reference/hooks/init/)
+## Add JS and CSS
+
+Create functions that will:
+ 1. Register the scripts and styles
+
+    [Register scripts](https://developer.wordpress.org/reference/functions/wp_register_script/)
+    
+    [Register styles](https://developer.wordpress.org/reference/functions/wp_register_style/)
+2. Queue the scripts and styles
+
+    [Enqueue scripts](https://developer.wordpress.org/reference/functions/wp_enqueue_script/)
+    
+    [Enqueue styles](https://developer.wordpress.org/reference/functions/wp_enqueue_style/)
+
+3. Create hooks
+
+    [Admin enqueue scripts hook](https://developer.wordpress.org/reference/hooks/admin_enqueue_scripts/)
+    
+    [Enqueue scripts hook](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/)
+
 ## ISSUES
 1. Forgot password -> create md5 password and copy it to replace it in database
 2. Can't update -> check rights if the files are for correct user

@@ -22,19 +22,27 @@
  * 1. HOOKS
  *      1.1 - admin menus and pages
  *      1.2 - plugin activation
+ *      1.3 - shortcodes
+ *      1.4 - load external scripts
  *
  * 2. SHORTCODES
+ *      2.1 - cp_register_shortcodes()
+ *      2.2 - cp_survey_shortcode()
  *
  * 3. FILTERS
  *      3.1 - cp_admin_menus()
  *
  * 4. EXTERNAL SCRIPTS
+ *      4.1 - cp_admin_scripts()
+ *      4.2 - cp_public_scripts()
  *
  * 5. ACTIONS
  *      5.1 - cp_create_plugin_tables()
  *      5.2 - cp_activate_plugin()
  *
  * 6. HELPERS
+ *      6.1 - cp_get_question_html()
+ *      6.2 - cp_question_is_answered()
  *
  * 7. CUSTOM POST TYPES
  *      7.1 - cp_survey
@@ -44,7 +52,7 @@
  *      8.2 - cp_stats_page()
  *
  * 9. SETTINGS
- *
+ *admin
  * 10. MISCELLANEOUS
  *
  */
@@ -58,6 +66,15 @@ add_action('admin_menu', 'cp_admin_menus');
 // 1.2
 // hint: plugin activation
 register_activation_hook(__FILE__, 'cp_activate_plugin');
+
+// 1.3
+// hint: register shortcodes
+add_action('init', 'cp_register_shortcodes');
+
+// 1.4
+// hint: load external scripts
+add_action('admin_enqueue_scripts', 'cp_admin_scripts');
+add_action('wp_enqueue_scripts', 'cp_public_scripts');
 
 
 /* !2. SHORTCODES */
@@ -172,6 +189,29 @@ function cp_admin_menus()
 
 /* !4. EXTERNAL SCRIPTS */
 
+// 4.1
+// hint: loads external files into wordpress ADMIN
+function cp_admin_scripts()
+{
+    // register scripts with WordPress's internal library
+    wp_register_script('cp-js-private', plugins_url('/js/private/cp.js',__FILE__), array('jquery'), '', true);
+
+    // add to queue of scripts that get loaded into every admin page
+    wp_enqueue_script('cp-js-private');
+}
+
+// 4.2
+// hint: loads external files into PUBLIC WEBSITE
+function cp_public_scripts()
+{
+    // register scripts with WordPress's internal library
+    wp_register_script('cp-js-public', plugins_url('/js/public/cp.js',__FILE__), array('jquery'), '', true);
+    wp_register_style('cp-css-public', plugins_url('/css/public/cp.css',__FILE__));
+
+    // add to queue of scripts that get loaded into every public page
+    wp_enqueue_script('cp-js-public');
+    wp_enqueue_style('cp-css-public');
+}
 
 /* !5. ACTIONS */
 
@@ -252,7 +292,41 @@ function cp_get_question_html($survey_id)
 
         // default complete class is blank
         $complete_class = '';
+        if (!$answered):
+            // setup out inputs html
+            $inputs = '<ul class="cp-question-options">';
+
+            foreach ($question_opts as $key => $value) :
+                $inputs .= '<li><label><input type="radio" name="cp_question_' . $survey_id . '" value="' . $value . '"/>' . $key . '</label></li>';
+            endforeach;
+            $inputs .= '</ul>';
+        else:
+            // survey is complete, add a real complete class
+            $complete_class = ' cp_question_complete';
+            $inputs = ' Thank you for completing our survey.';
+        endif;
+
+        $html .= '
+            <dl id="cp_' . $survey_id . '_question" class="cp_question ' . $complete_class . '">
+                <dt>' . $question_text . '</dt>
+                <dd>' . $inputs . '</dd>
+            </dl>';
+
     endif;
+
+    return $html;
+}
+
+// 6.2
+// hint: returns true or false depending on
+// whether or not the current user has answered the survey
+function cp_question_is_answered($survey_id)
+{
+    // setup default return value
+    $return_value = false;
+
+    // return result
+    return $return_value;
 }
 
 /* !7. CUSTOM POST TYPES */
