@@ -44,6 +44,7 @@
 2. Create function that will replace the shortcode
 
 3. Register hooks for shortcode using [init](https://developer.wordpress.org/reference/hooks/init/)
+
 ## Add JS and CSS
 
 Create functions that will:
@@ -64,6 +65,13 @@ Create functions that will:
     
     [Enqueue scripts hook](https://developer.wordpress.org/reference/hooks/wp_enqueue_scripts/)
 
+4. Ajax save response - create script and register hooks
+
+   [WP ajax](https://codex.wordpress.org/Plugin_API/Action_Reference/wp_ajax_(action\))
+   
+   [WP ajax nopriv](https://codex.wordpress.org/Plugin_API/Action_Reference/wp_ajax_nopriv_(action\))
+   
+   
 ## ISSUES
 1. Forgot password -> create md5 password and copy it to replace it in database
 2. Can't update -> check rights if the files are for correct user

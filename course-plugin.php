@@ -24,6 +24,7 @@
  *      1.2 - plugin activation
  *      1.3 - shortcodes
  *      1.4 - load external scripts
+ *      1.5 - register ajax functions
  *
  * 2. SHORTCODES
  *      2.1 - cp_register_shortcodes()
@@ -39,10 +40,14 @@
  * 5. ACTIONS
  *      5.1 - cp_create_plugin_tables()
  *      5.2 - cp_activate_plugin()
+ *      5.3 - cp_ajax_save_response()
+ *      5.4 - cp_save_response()
  *
  * 6. HELPERS
  *      6.1 - cp_get_question_html()
  *      6.2 - cp_question_is_answered()
+ *      6.3 - cp_return_json()
+ *      6.4 - cp_get_client_ip()
  *
  * 7. CUSTOM POST TYPES
  *      7.1 - cp_survey
@@ -52,8 +57,9 @@
  *      8.2 - cp_stats_page()
  *
  * 9. SETTINGS
- *admin
+ *
  * 10. MISCELLANEOUS
+ *      10.1 - cp_debug()
  *
  */
 
@@ -76,6 +82,10 @@ add_action('init', 'cp_register_shortcodes');
 add_action('admin_enqueue_scripts', 'cp_admin_scripts');
 add_action('wp_enqueue_scripts', 'cp_public_scripts');
 
+// 1.5
+// hint: register ajax functions
+add_action('wp_ajax_cp_ajax_save_response', 'cp_ajax_save_response'); // admin user
+add_action('wp_ajax_nopriv_cp_ajax_save_response', 'cp_ajax_save_response'); // website user
 
 /* !2. SHORTCODES */
 
@@ -194,7 +204,7 @@ function cp_admin_menus()
 function cp_admin_scripts()
 {
     // register scripts with WordPress's internal library
-    wp_register_script('cp-js-private', plugins_url('/js/private/cp.js',__FILE__), array('jquery'), '', true);
+    wp_register_script('cp-js-private', plugins_url('/js/private/cp.js', __FILE__), array('jquery'), '', true);
 
     // add to queue of scripts that get loaded into every admin page
     wp_enqueue_script('cp-js-private');
@@ -205,8 +215,8 @@ function cp_admin_scripts()
 function cp_public_scripts()
 {
     // register scripts with WordPress's internal library
-    wp_register_script('cp-js-public', plugins_url('/js/public/cp.js',__FILE__), array('jquery'), '', true);
-    wp_register_style('cp-css-public', plugins_url('/css/public/cp.css',__FILE__));
+    wp_register_script('cp-js-public', plugins_url('/js/public/cp.js', __FILE__), array('jquery'), '', true);
+    wp_register_style('cp-css-public', plugins_url('/css/public/cp.css', __FILE__));
 
     // add to queue of scripts that get loaded into every public page
     wp_enqueue_script('cp-js-public');
@@ -264,6 +274,81 @@ function cp_activate_plugin()
     // create/update custom plugin tables
     cp_create_plugin_tables();
 }
+
+// 5.3
+// hint: ajax form handler for saving question responses
+// expects: $_POST['survey_id'] and $_POST['response_id']
+function cp_ajax_save_response()
+{
+    $result = array(
+        'status'          => 0,
+        'message'         => 'Could not save response',
+        'survey_complete' => false
+    );
+    try {
+        $survey_id = (isset($_POST['survey_id'])) ? (int)$_POST['survey_id'] : 0;
+        $response_id = (isset($_POST['response_id'])) ? (int)$_POST['response_id'] : 0;
+        $saved = cp_save_response($survey_id, $response_id);
+        if ($saved):
+            $survey = get_post($survey_id);
+            if (isset($survey->post_type) && $survey->post_type == 'cp_survey'):
+                $complete = true;
+                $html = cp_get_question_html($survey_id);
+
+                $result = array(
+                    'status'          => 1,
+                    'message'         => 'Response saved!',
+                    'survey_complete' => $complete,
+                    'html'            => $html
+                );
+            else:
+                $result['message'] .= ' Invalid survey.';
+            endif;
+        endif;
+    } catch (Exception $exception) {
+        // php error
+    }
+    cp_return_json($result);
+}
+
+// 5.4
+// hint: saves single question response
+function cp_save_response($survey_id, $response_id)
+{
+    global $wpdb;
+    $return_value = false;
+    try {
+        $ip_address = cp_get_client_ip();
+        $survey = get_post($survey_id);
+        if ($survey->post_type == 'cp_survey') {
+            // get current timestamp
+            $now = new DateTime();
+            $ts = $now->format('Y-m-d H:i:s');
+
+            // query sql
+            $sql = "
+                INSERT INTO {$wpdb->prefix}cp_survey_responses(ip_address, survey_id, response_id, created_at)
+                VALUES(%s,%d,%d,%s)
+                ON DUPLICATE KEY UPDATE survey_id = %d
+            ";
+
+            // prepare query
+            $sql = $wpdb->prepare($sql, $ip_address, $survey_id, $response_id, $ts, $survey_id);
+
+            // run query
+            $entry_id = $wpdb->query($sql);
+
+            // IF response save successfully ...
+            if ($entry_id) {
+                $return_value = true;
+            }
+        }
+    } catch (Exception $e) {
+        cp_debug('cp_save_response php errpr', $e->getMessage());
+    }
+    return $return_value;
+}
+
 
 /* !6. HELPERS */
 
@@ -329,9 +414,44 @@ function cp_question_is_answered($survey_id)
     return $return_value;
 }
 
+// 6.3
+// hint: returns json string and exits php processes
+function cp_return_json($php_array)
+{
+
+    // encode result json string
+    $json_result = json_encode($php_array);
+
+    // return result
+    wp_die($json_result);
+}
+
+// 6.4
+// hint: makes it's best attempt to get the ip address of the current user
+function cp_get_client_ip()
+{
+    if (getenv('HTTP_CLIENT_IP')) {
+        $ipaddress = getenv('HTTP_CLIENT_IP');
+    } elseif (getenv('HTTP_X_FORWARDED_FOR')) {
+        $ipaddress = getenv('HTTP_X_FORWARDED_FOR');
+    } elseif (getenv('HTTP_X_FORWARDED')) {
+        $ipaddress = getenv('HTTP_X_FORWARDED');
+    } elseif (getenv('HTTP_FORWARDED_FOR')) {
+        $ipaddress = getenv('HTTP_FORWARDED_FOR');
+    } elseif (getenv('HTTP_FORWARDED')) {
+        $ipaddress = getenv('HTTP_FORWARDED');
+    } elseif (getenv('REMOTE_ADDR')) {
+        $ipaddress = getenv('REMOTE_ADDR');
+    } else {
+        $ipaddress = 'UNKNOWN';
+    }
+
+    return $ipaddress;
+}
+
 /* !7. CUSTOM POST TYPES */
 // 7.1
-// ssp_survey
+// cp_survey
 include_once(plugin_dir_path(__FILE__) . 'cpt/cp_survey.php');
 
 /* !8. ADMIN PAGES */
@@ -368,6 +488,26 @@ function cp_stats_page()
     echo $output;
 }
 
+/* !9. SETTINGS */
 /* !10. MISCELLANEOUS */
+
+// 10.1
+// hint: writes an output to the browser and runs kills php process
+function cp_debug($msg = '', $data = false, $die = true)
+{
+    echo '<pre>';
+
+    if (strlen($msg)) {
+        echo $msg . '<br/>';
+    }
+
+    if ($data !== false) {
+        var_dump($data);
+    }
+
+    echo '<pre/>';
+
+    if ($die) wp_die();
+}
 
 
