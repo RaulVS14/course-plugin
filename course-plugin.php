@@ -48,6 +48,9 @@
  *      6.2 - cp_question_is_answered()
  *      6.3 - cp_return_json()
  *      6.4 - cp_get_client_ip()
+ *      6.5 - cp_get_response_stats()
+ *      6.6 - cp_get_item_responses()
+ *      6.7 - cp_get_survey_responses()
  *
  * 7. CUSTOM POST TYPES
  *      7.1 - cp_survey
@@ -101,6 +104,7 @@ function cp_register_shortcodes()
 // hint: display a survey
 function cp_survey_shortcode($args, $content = "")
 {
+    // setup our return variable
     $output = "";
     try {
         // begin building our output html
@@ -119,20 +123,30 @@ function cp_survey_shortcode($args, $content = "")
 
             // build form html
             $form = '';
-            if (strlen($content)):
+            if (strlen($content)) {
                 $form = '<div class="cp-survey-content">'
                     . wpautop($content)
                     . '</div>';
-            endif;
+            }
             $submit_button = '';
-            if (!cp_question_is_answered($survey_id)):
+
+            $responses = cp_get_survey_responses($survey_id);
+
+            // cp_survey_is_complete
+            if (!cp_question_is_answered($survey_id)) {
+
                 $submit_button = '<div class="cp-survey-footer">
+                                    <p><em>Submit your response to see the results of all ' . $responses . ' participants surveyed.</em></p>
                                     <p class="cp-input-container cp-submit">
                                         <input type="submit" name="cp_submit" value="Submit Your Response"/>                                    
                                     </p>
                                   </div>';
-            endif;
+            }
+
+            $nonce = wp_nonce_field('cp-save-survey-submission_' . $survey_id, '_wpnonce', true, false);
+
             $form .= '<form id="survey_' . $survey_id . '" class="cp-survey-form">'
+                . $nonce . ''
                 . cp_get_question_html($survey_id) . $submit_button
                 . '</form>';
             $output .= $form;
@@ -288,23 +302,31 @@ function cp_ajax_save_response()
     try {
         $survey_id = (isset($_POST['survey_id'])) ? (int)$_POST['survey_id'] : 0;
         $response_id = (isset($_POST['response_id'])) ? (int)$_POST['response_id'] : 0;
-        $saved = cp_save_response($survey_id, $response_id);
-        if ($saved):
-            $survey = get_post($survey_id);
-            if (isset($survey->post_type) && $survey->post_type == 'cp_survey'):
-                $complete = true;
-                $html = cp_get_question_html($survey_id);
 
-                $result = array(
-                    'status'          => 1,
-                    'message'         => 'Response saved!',
-                    'survey_complete' => $complete,
-                    'html'            => $html
-                );
-            else:
-                $result['message'] .= ' Invalid survey.';
-            endif;
-        endif;
+        // verify nonce
+        if (!check_ajax_referer('cp-save-survey-submission_' . $survey_id, false, false)) {
+            $result['message'] .= ' Nonce invalid';
+        } else {
+            $saved = cp_save_response($survey_id, $response_id);
+            if ($saved) {
+
+                $survey = get_post($survey_id);
+                if (isset($survey->post_type) && $survey->post_type == 'cp_survey') {
+
+                    $complete = true;
+                    $html = cp_get_question_html($survey_id);
+
+                    $result = array(
+                        'status'          => 1,
+                        'message'         => 'Response saved!',
+                        'survey_complete' => $complete,
+                        'html'            => $html
+                    );
+                } else{
+                    $result['message'] .= ' Invalid survey.';
+                }
+            }
+        }
     } catch (Exception $exception) {
         // php error
     }
@@ -354,7 +376,7 @@ function cp_save_response($survey_id, $response_id)
 
 // 6.1
 // hint: returns html for survey question
-function cp_get_question_html($survey_id)
+function cp_get_question_html($survey_id, $force_results = false)
 {
     $html = '';
 
@@ -373,24 +395,31 @@ function cp_get_question_html($survey_id)
         );
 
         // check if the current user has already answered this survey question
-        $answered = cp_question_is_answered($survey_id);
+        // or is force_Results is true, treat as answered
+        $answered = ($force_results) ? true : cp_question_is_answered($survey_id);
 
         // default complete class is blank
         $complete_class = '';
+        // setup out inputs html
+        $inputs = '<ul class="cp-question-options">';
         if (!$answered):
-            // setup out inputs html
-            $inputs = '<ul class="cp-question-options">';
 
             foreach ($question_opts as $key => $value) :
                 $inputs .= '<li><label><input type="radio" name="cp_question_' . $survey_id . '" value="' . $value . '"/>' . $key . '</label></li>';
             endforeach;
-            $inputs .= '</ul>';
         else:
             // survey is complete, add a real complete class
             $complete_class = ' cp_question_complete';
             $inputs = ' Thank you for completing our survey.';
-        endif;
+            foreach ($question_opts as $key => $value) {
+                $stats = cp_get_response_stats($survey_id, $value);
 
+                // append input html for each option
+                $inputs .= '<li><label>' . $key . ' - ' . $stats['percentage'] . '</label></li>';
+            }
+
+        endif;
+        $inputs .= '</ul>';
         $html .= '
             <dl id="cp_' . $survey_id . '_question" class="cp_question ' . $complete_class . '">
                 <dt>' . $question_text . '</dt>
@@ -407,8 +436,39 @@ function cp_get_question_html($survey_id)
 // whether or not the current user has answered the survey
 function cp_question_is_answered($survey_id)
 {
+    global $wpdb;
+
     // setup default return value
     $return_value = false;
+
+    try {
+
+        // get user ip address
+        $ip_address = cp_get_client_ip();
+
+        // cp_debug('ip_address', $ip_address);
+
+        // sql to check if this user has completed the survey
+
+        $sql = "
+            SELECT response_id FROM {$wpdb->prefix}cp_survey_responses
+            WHERE survey_id = %d AND ip_address = %s
+        ";
+
+        // prepare query
+        $sql = $wpdb->prepare($sql, $survey_id, $ip_address);
+
+        // run query, returns entry id if successful
+        $entry_id = $wpdb->get_var($sql);
+
+        // IF query worked and entry_id is not null ...
+        if ($entry_id !== NULL) {
+            // set our return value to the entry_id
+            $return_value = $entry_id;
+        }
+    } catch (Exception $e) {
+        // php error
+    }
 
     // return result
     return $return_value;
@@ -447,6 +507,89 @@ function cp_get_client_ip()
     }
 
     return $ipaddress;
+}
+
+// 6.5
+// hint: gets the statistics for a survey response
+function cp_get_response_stats($survey_id, $response_id)
+{
+    // setup default return variable
+    $stats = array(
+        'percentage' => '0%',
+        'votes'      => 0
+    );
+
+    try {
+        // get responses for this item
+        $item_responses = cp_get_item_responses($survey_id, $response_id);
+
+        // get total responses for this survey
+        $survey_responses = cp_get_survey_responses($survey_id);
+
+        if ($survey_responses && $item_responses) {
+            $stats = array(
+                'percentage' => ceil(($item_responses / $survey_responses) * 100) . '%',
+                'votes'      => $item_responses
+            );
+        }
+    } catch (Exception $e) {
+
+        // php error
+        cp_debug('cp_get_response_stats exception', $e);
+    }
+
+    // return stats
+    return $stats;
+}
+
+// 6.6
+function cp_get_item_responses($survey_id, $response_id)
+{
+    global $wpdb;
+    $item_responses = 0;
+    try {
+        // sql to check if this user has completed the survey
+        $sql = "
+            SELECT count(id) AS total FROM {$wpdb->prefix}cp_survey_responses
+            WHERE survey_id = %d AND response_id = %d
+        ";
+
+        // prepare query
+        $sql = $wpdb->prepare($sql, $survey_id, $response_id);
+
+        // run query, returns total item responses
+        $item_responses = (int)$wpdb->get_var($sql);
+    } catch (Exception $e) {
+        cp_debug('cp_get_item_responses php error', $e->getMessage());
+    }
+    return $item_responses;
+}
+
+// 6.7
+function cp_get_survey_responses($survey_id)
+{
+    global $wpdb;
+
+    $survey_responses = 0;
+
+    try {
+        // sql to check if this user has completed the survey
+        $sql = "
+            SELECT count(id) AS total FROM {$wpdb->prefix}cp_survey_responses
+            WHERE survey_id = %d
+        ";
+
+        // prepare query
+        $sql = $wpdb->prepare($sql, $survey_id);
+
+        // run query, returns total survey responses
+        $survey_responses = (int)$wpdb->get_var($sql);
+    } catch (Exception $e) {
+        // php error
+        cp_debug('cp_get_survey_responses php error', $e->getMessage());
+    }
+
+    return $survey_responses;
 }
 
 /* !7. CUSTOM POST TYPES */

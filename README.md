@@ -70,7 +70,9 @@ Create functions that will:
    [WP ajax](https://codex.wordpress.org/Plugin_API/Action_Reference/wp_ajax_(action\))
    
    [WP ajax nopriv](https://codex.wordpress.org/Plugin_API/Action_Reference/wp_ajax_nopriv_(action\))
-   
+
+5. Handling AJAX responses
+    [Nonce](https://codex.wordpress.org/WordPress_Nonces)
    
 ## ISSUES
 1. Forgot password -> create md5 password and copy it to replace it in database

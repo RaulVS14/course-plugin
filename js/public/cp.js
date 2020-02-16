@@ -22,11 +22,10 @@ jQuery(document).ready(function ($) {
         // prevent form form submitting normally
         e.preventDefault();
         let $form = $(this);
-        let $survey = $form.closest('.ssp-survey');
+        let $survey = $form.closest('.cp-survey');
 
         // get selected radio button
         let $selected = $('input[name^="cp_question_"]:checked', $form);
-
         // split field name into array
         let name_arr = $selected.attr('name').split('_');
 
@@ -36,21 +35,37 @@ jQuery(document).ready(function ($) {
         // get the response id from the value of the selected item
         let response_id = $selected.val();
 
+        let data = {
+            _wpnonce: $('[name="_wpnonce"]',$form).val(),
+            _wp_http_referer: $('[name="_wp_http_referer"]',$form).val(),
+            survey_id,
+            response_id
+        };
+
+        cp_debug('data', data);
+
         // get the closest dl.ssp-question element
-        let $dl = $selected.closest('dl.cp-question');
+        let $dl = $selected.closest('dl.cp_question');
 
         $.ajax({
             cache: false,
             method: 'post',
             url: wpajax_url + '?action=cp_ajax_save_response',
             dataType: 'json',
-            data: {
-                survey_id,
-                response_id
-            },
+            data,
             success: (response) => {
                 cp_debug(response);
-                alert(response.message);
+                if(response.status){
+                    // update html of the current li
+                    console.log($dl);
+                    $dl.replaceWith(response.html);
+
+                    // hide survey content message
+                    $('.cp-survey-footer', $survey).hide();
+                } else {
+                    // notify user
+                    alert(response.message);
+                }
             },
             error: (jqXHR, textStatus, errorThrown) => {
                 cp_debug('error', jqXHR);
