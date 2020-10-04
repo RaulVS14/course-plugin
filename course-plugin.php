@@ -32,6 +32,8 @@
  *
  * 3. FILTERS
  *      3.1 - cp_admin_menus()
+ *      3.2 - cp_survey_column_headers()
+ *      3.3 - cp_survey_column_data()
  *
  * 4. EXTERNAL SCRIPTS
  *      4.1 - cp_admin_scripts()
@@ -51,6 +53,8 @@
  *      6.5 - cp_get_response_stats()
  *      6.6 - cp_get_item_responses()
  *      6.7 - cp_get_survey_responses()
+ *      6.8 - cp_ajax_get_stats_html()
+ *      6.9 - cp_get_stats_html()
  *
  * 7. CUSTOM POST TYPES
  *      7.1 - cp_survey
@@ -89,6 +93,13 @@ add_action('wp_enqueue_scripts', 'cp_public_scripts');
 // hint: register ajax functions
 add_action('wp_ajax_cp_ajax_save_response', 'cp_ajax_save_response'); // admin user
 add_action('wp_ajax_nopriv_cp_ajax_save_response', 'cp_ajax_save_response'); // website user
+add_action('wp_ajax_cp_ajax_get_stats_html', 'cp_ajax_get_stats_html'); // admin user
+
+// 1.6
+// hint: custom admin columns
+add_filter('manage_edit-cp_survey_columns', 'cp_survey_column_headers');
+add_filter('manage_cp_survey_posts_custom_column', 'cp_survey_column_data', 1, 2);
+
 
 /* !2. SHORTCODES */
 
@@ -211,6 +222,42 @@ function cp_admin_menus()
 }
 
 
+// 3.2
+function cp_survey_column_headers($columns)
+{
+    // creating custom column header data
+    $columns = array(
+        'cb' => '<input type="checkbox" />',
+        'title' => __("Survey"),
+        'responses' => __("Responses"),
+        'shortcode' => __('Shortcode')
+    );
+
+    // returning new columns
+    return $columns;
+}
+
+// 3.3
+function cp_survey_column_data($column, $post_id)
+{
+    // setup our return text
+    $output = '';
+    switch ($column) {
+        case 'responses':
+            $stats_url = admin_url('admin.php?page=cp_stats_page&survey_id=' . $post_id);
+            $responses = cp_get_survey_responses($post_id);
+            $output .= '<a href="' . $stats_url . '" title="See Survey Statistics">' . $responses . '</a>';
+            break;
+        case 'shortcode':
+            $shortcode = '[cp_survey id="' . $post_id . '"]';
+            $output .= '<input onClick="this.select();" type="text" value="' . htmlspecialchars($shortcode) . '" readonly>';
+            break;
+    }
+
+    // echo the output
+    echo $output;
+}
+
 /* !4. EXTERNAL SCRIPTS */
 
 // 4.1
@@ -295,8 +342,8 @@ function cp_activate_plugin()
 function cp_ajax_save_response()
 {
     $result = array(
-        'status'          => 0,
-        'message'         => 'Could not save response',
+        'status' => 0,
+        'message' => 'Could not save response',
         'survey_complete' => false
     );
     try {
@@ -317,12 +364,12 @@ function cp_ajax_save_response()
                     $html = cp_get_question_html($survey_id);
 
                     $result = array(
-                        'status'          => 1,
-                        'message'         => 'Response saved!',
+                        'status' => 1,
+                        'message' => 'Response saved!',
                         'survey_complete' => $complete,
-                        'html'            => $html
+                        'html' => $html
                     );
-                } else{
+                } else {
                     $result['message'] .= ' Invalid survey.';
                 }
             }
@@ -387,9 +434,9 @@ function cp_get_question_html($survey_id, $force_results = false)
     if ($survey->post_type == 'cp_survey'):
         $question_text = $survey->post_content;
         $question_opts = array(
-            'Strongly Agree'    => 5,
-            'Somewhat Agree'    => 4,
-            'Neutral'           => 3,
+            'Strongly Agree' => 5,
+            'Somewhat Agree' => 4,
+            'Neutral' => 3,
             'Somewhat Disagree' => 2,
             'Strongly Disagree' => 1
         );
@@ -405,7 +452,8 @@ function cp_get_question_html($survey_id, $force_results = false)
         if (!$answered):
 
             foreach ($question_opts as $key => $value) :
-                $inputs .= '<li><label><input type="radio" name="cp_question_' . $survey_id . '" value="' . $value . '"/>' . $key . '</label></li>';
+                $checked = $value == 3 ? 'checked' : '';
+                $inputs .= '<li><label><input type="radio" name="cp_question_' . $survey_id . '" value="' . $value . '" ' . $checked . '/>' . $key . '</label></li>';
             endforeach;
         else:
             // survey is complete, add a real complete class
@@ -516,7 +564,7 @@ function cp_get_response_stats($survey_id, $response_id)
     // setup default return variable
     $stats = array(
         'percentage' => '0%',
-        'votes'      => 0
+        'votes' => 0
     );
 
     try {
@@ -529,7 +577,7 @@ function cp_get_response_stats($survey_id, $response_id)
         if ($survey_responses && $item_responses) {
             $stats = array(
                 'percentage' => ceil(($item_responses / $survey_responses) * 100) . '%',
-                'votes'      => $item_responses
+                'votes' => $item_responses
             );
         }
     } catch (Exception $e) {
@@ -592,6 +640,53 @@ function cp_get_survey_responses($survey_id)
     return $survey_responses;
 }
 
+// 6.8
+// hint: this function gets stats html for a given survey, returning it inside of a JSON data string
+// this function is an ajax form handler
+// expects $_POST['survey_id']
+function cp_ajax_get_stats_html()
+{
+    // setup default return variable
+    $result = array(
+        'status' => 0,
+        'message' => 'Could not get stats html',
+        'html' => ''
+    );
+
+    // get survey id from GET scope
+    $survey_id = (isset($_POST['survey_id'])) ? (int)$_POST['survey_id'] : 0;
+
+    // if survey id is not 0
+    if ($survey_id) {
+        $result = array(
+            'status' => 1,
+            'message' => 'Stats html retrieved successfully',
+            'html' => cp_get_stats_html($survey_id)
+        );
+    }
+
+    // return JSON result
+    cp_return_json($result);
+}
+
+// 6.9
+// hint: this function returns html containing survey stats data
+function cp_get_stats_html($survey_id)
+{
+    // get stats html
+    // $output = '<div class="cp-survey-stats"></div>';
+    $question_html = '';
+    $responses = 0;
+    if ($survey_id) {
+        $question_html = cp_get_question_html($survey_id, true);
+        $responses = cp_get_survey_responses($survey_id);
+    }
+
+    // build output
+    $output = '<div class="cp-survey-stats">'.$question_html.'<p>'.$responses.' total participants.</p></div>';
+    return $output;
+}
+
 /* !7. CUSTOM POST TYPES */
 // 7.1
 // cp_survey
@@ -614,20 +709,60 @@ function cp_welcome_page()
     echo $output;
 }
 
+// 8.2
+// hint: this page displays dynamic survey statistics
 function cp_stats_page()
 {
+    // query surveys
+    $surveys = get_posts(array(
+        'post_type' => 'cp_survey',
+        'post_status' => array('publish', 'draft'),
+        'posts_per_page' => -1,
+        'orderby' => 'post_title',
+        'order' => 'ASC'
+    ));
+
+    // get selected survey
+    $selected_survey_id = (isset($_GET['survey_id'])) ? (int)$_GET['survey_id'] : 0;
+    $select_html = "";
+    // IF there are surveys ...
+    if (count($surveys)) {
+        // build form select html
+        $select_html .= '<label>Selected Survey: </label><select name="cp_survey"><option> - Select One - </option>';
+        foreach ($surveys as $survey) {
+
+            // determine selected attribute for this option
+            $selected = '';
+            if ($survey->ID == $selected_survey_id) {
+                $selected = ' selected="selected"';
+            }
+
+            // append option to select html
+            $select_html .= '<option value="' . $survey->ID . '" ' . $selected . '>' . $survey->post_title . '</option>';
+        }
+        $select_html .= '</select>';
+    } else {
+        // IF no surveys, display friendly message
+        $select_html .= 'You dont\'t have any surveys yet! Why not <a href="' . admin_url('post-new.php?post_type=cp_survey') . '">Create a new Survey?</a>';
+    }
+
+    // get stats html
+    $stats_html = '<div class="cp-survey-stats"></div>';
+
+    if ($selected_survey_id) {
+        $stats_html = cp_get_stats_html($selected_survey_id);
+    }
+
+    // build output
     $output = '
         <div class="wrap cp-stats-admin-page">
-            <h2>Plugin Statistics</h2>
-            <p>
-                <label for="survey-select">Select a survey</label>
-                <select name="survey" id="survey-select">
-                    <option value=""> - Select One - </option>
-                </select>
-            </p>
+            <h2>Survey Statistics</h2>
+            <p>' . $select_html . '</p>
+            ' . $stats_html . '
         </div>
     ';
 
+    // echo output
     echo $output;
 }
 

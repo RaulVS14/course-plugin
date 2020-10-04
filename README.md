@@ -73,7 +73,22 @@ Create functions that will:
 
 5. Handling AJAX responses
     [Nonce](https://codex.wordpress.org/WordPress_Nonces)
-   
+
+## Create custom admin columns
+1. Create custom admin columns function and register it as a filter
+    [Add filter](https://developer.wordpress.org/reference/functions/add_filter/)
+    
+    [Manage edit-post type columns](https://codex.wordpress.org/Plugin_API/Filter_Reference/manage_edit-post_type_columns)
+    
+    [Provide value for custom post type columns](https://developer.wordpress.org/reference/hooks/manage_post-post_type_posts_custom_column/)
+
+## Create admin page for statistics
+1. Create ajax functions for admin HTML and register
+2. Create function for HTML
+3. Create event listener for stats page 
+
+
+
 ## ISSUES
 1. Forgot password -> create md5 password and copy it to replace it in database
 2. Can't update -> check rights if the files are for correct user

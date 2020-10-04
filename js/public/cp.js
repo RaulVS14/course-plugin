@@ -15,7 +15,7 @@ jQuery(document).ready(function ($) {
     }
 
     // setup our wp ajax url
-    let wpajax_url = document.location.protocol + '//' + document.location.host + '/personal/wordpress/wp-admin/admin-ajax.php';
+    let wpajax_url = document.location.protocol + '//' + document.location.host + '/wordpress/wp-admin/admin-ajax.php';
 
     // bind custom function to survey form submit event
     $(document).on('submit', '.cp-survey-form', function (e) {
@@ -26,6 +26,11 @@ jQuery(document).ready(function ($) {
 
         // get selected radio button
         let $selected = $('input[name^="cp_question_"]:checked', $form);
+
+        if($selected.length === 0){
+            return;
+        }
+
         // split field name into array
         let name_arr = $selected.attr('name').split('_');
 
