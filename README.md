@@ -85,8 +85,10 @@ Create functions that will:
 ## Create admin page for statistics
 1. Create ajax functions for admin HTML and register
 2. Create function for HTML
-3. Create event listener for stats page 
+3. Create event listener for stats page
 
+## Create admin use
+1. Update page html and create function for db query for preview statistics
 
 
 ## ISSUES

@@ -55,6 +55,7 @@
  *      6.7 - cp_get_survey_responses()
  *      6.8 - cp_ajax_get_stats_html()
  *      6.9 - cp_get_stats_html()
+ *      6.10 - cp_get_submissions_received()
  *
  * 7. CUSTOM POST TYPES
  *      7.1 - cp_survey
@@ -674,17 +675,59 @@ function cp_ajax_get_stats_html()
 function cp_get_stats_html($survey_id)
 {
     // get stats html
-    // $output = '<div class="cp-survey-stats"></div>';
-    $question_html = '';
-    $responses = 0;
+    $output = '<div class="cp-survey-stats"></div>';
     if ($survey_id) {
         $question_html = cp_get_question_html($survey_id, true);
         $responses = cp_get_survey_responses($survey_id);
+        $submissions_received = cp_get_submissions_received($survey_id);
+
+        // build output
+        $output = '<div class="cp-survey-stats">
+                ' . $question_html . '
+                <p>' . $responses . ' total participants.</p>
+                <p>' . $submissions_received . ' submissions received today.</p>
+                </div>';
     }
 
-    // build output
-    $output = '<div class="cp-survey-stats">'.$question_html.'<p>'.$responses.' total participants.</p></div>';
     return $output;
+}
+
+// 6.10
+// hint: returns the number of submission received today
+// either for all surveys of specific survey
+function cp_get_submissions_received($survey_id = 0)
+{
+    global $wpdb;
+
+    // set default return value
+    $submissions_received = 0;
+
+    // get today's date
+    $today = date('Y-m-d');
+    $today .= ' 00:00:00';
+
+    try {
+        // IF survey_id is provided
+        if ($survey_id) {
+            $sql = "SELECT count(id) AS total FROM {$wpdb->prefix}cp_survey_responses WHERE updated_at >= '{$today}' AND survey_id = %d";
+
+            // prepare query
+            $sql = $wpdb->prepare($sql, $survey_id);
+        } else {
+            // IF no survey_id is provided
+            // get total of all survey submissions
+            // sql to check if this user has completed the survey
+            $sql = "SELECT count(id) AS total FROM {$wpdb->prefix}cp_survey_responses WHERE updated_at >= '{$today}'";
+        }
+
+        // run query, returns total survey responses
+        $submissions_received = (int)$wpdb->get_var($sql);
+    } catch (Exception $e) {
+        cp_debug('cp_get_submission_received php error', $e->getMessage());
+    }
+
+    return $submissions_received;
+
 }
 
 /* !7. CUSTOM POST TYPES */
@@ -698,11 +741,20 @@ include_once(plugin_dir_path(__FILE__) . 'cpt/cp_survey.php');
 // hint: this page explains what the plugin is about
 function cp_welcome_page()
 {
+    $submissions_received = cp_get_submissions_received();
+    $submissions_received_msg = 'No submissions received today ... yet!';
+    if ($submissions_received) {
+        $submissions_received_msg = 'Woohoo! ' . $submissions_received . ' submissons received today.';
+    }
     $output = '
-        <div class="wrap cp-welcome-admin-page">
+        <div class="wrap">
             <h2>Course plugin</h2>
-            <p>Just to learn a new skill</p>
-            <p> 2 peeps involved</p>
+            <h3>' . $submissions_received_msg . '</h3>
+            <ol>
+                <li>Get to know your audience</li>
+                <li><a href="' . admin_url('post-new.php?post_type=cp_survey') . '">Create simple surveys</a> that capture anonymous data.</li>
+                <li><a href="' . admin_url('admin.php?page=cp_stats_page') . '">See insightful statistics</a> from your surveys.</li>
+            </ol>
         </div>
     ';
 
